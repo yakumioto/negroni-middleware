@@ -35,14 +35,10 @@ func NewJWTMiddleware(keyFunc jwt.Keyfunc, ignoreURLAndMethods map[string][]stri
 }
 
 func (jm *JWTMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
-	for url, methods := range jm.IgnoreRULAndMethods {
-		for _, method := range methods {
-			if r.RequestURI == url {
-				if methods == nil || r.Method == method {
-					next(w, r)
-					return
-				}
-			}
+	if authIgnoreURL(r.RequestURI, jm.IgnoreRULAndMethods) {
+		if authIgnoreMethod(r.Method, jm.IgnoreRULAndMethods[r.RequestURI]) {
+			next(w, r)
+			return
 		}
 	}
 
@@ -50,16 +46,38 @@ func (jm *JWTMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next 
 	if err != nil {
 		logger.Println(err)
 		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(http.StatusText(http.StatusUnauthorized)))
 		return
 	}
 
 	if _, err := jwt.Parse(token, jm.KeyFuc); err != nil {
 		logger.Println(err)
 		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(http.StatusText(http.StatusUnauthorized)))
 		return
 	}
 
 	next(w, r)
+}
+
+func authIgnoreURL(requestURL string, ignoreURLAndMethods map[string][]string) bool {
+	for url := range ignoreURLAndMethods {
+		if requestURL == url {
+			return true
+		}
+	}
+
+	return false
+}
+
+func authIgnoreMethod(requestMethod string, ignoreMethods []string) bool {
+	for _, method := range ignoreMethods {
+		if requestMethod == method {
+			return true
+		}
+	}
+
+	return false
 }
 
 func fromAuthHandler(r *http.Request) (string, error) {
